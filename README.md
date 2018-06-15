@@ -1,6 +1,9 @@
 # CKME136_Capstone
 
 Dataset
+The dataset used for this study can be found at Fatality Analysis Reporting System (FARS) (2016) publicly released by National Highway Traffic Safety Administration (NHTSA). FARS is a nationwide census of fatal injuries in Motor Vehicles traffic crashes on U.S. public roads and contains variables that characterize person, vehicle and crash factors. 
+
+These files contain elements derived from the FARS datasets to make it easier to extract certain data classifications and topical areas, such as commonly used age groups, speeding involved crashes, and distraction involved crashes. It represents different data points in the US Traffic fatality Records.
 
 The specific dataset used for analysis in this project is formed by extracting key attributes from the raw data. There is an Accident (ACC_AUX), Vehicle (VEH_AUX), and Person (PER_AUX) level auxiliary file for each year of data.
 
