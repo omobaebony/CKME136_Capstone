@@ -1,0 +1,208 @@
+---
+title: "Feature Selection in CKME136"
+output:
+  word_document: default
+  html_notebook: default
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+```{r}
+#
+```
+
+# Load required packages
+```{r}
+require(plyr)
+library(dplyr)
+library(FSelector)
+library(FSelectorRcpp)
+library(ElemStatLearn)
+#library(corrplot)
+```
+
+# Load data
+```{r}
+fcpp <- read.csv("C:/Users/YENN/Desktop/UST/FARS2016N/accident2016.csv", header = T, stringsAsFactors = F)
+```
+
+
+# Merge YEAR, MONTH, DAY, HOUR, MINUTE into Timestamps 
+```{r}
+fcpp$TIMESTAMP <- with(fcpp, ISOdatetime(YEAR, MONTH, DAY, HOUR, MINUTE, sec = 0, tz=""))
+```
+
+# Remove TWAY_ID2 attribute, the only variable with missing values: <sum(is.na (accs$TWAY_ID2))> and TWAY_ID, not appropiate for the research project
+# Remove YEAR, MONTH, DAY, HOUR, MINUTE attributes - it's been merged into Timestamps 12:14
+# Remove WEATHER1, WEATHER2 attributes, are duplicate of the original WEATHER
+# Remove RAIL attribute, no relevant to the research
+
+## accs2016 <- accs[,-c(1:2,10:11,12:14,16:17,23:24,37:38,41)]
+```{r}
+fcpp16 <- fcpp[,-c(1:2,10:14,16:17,23:24,37:38,41,53)]
+```
+
+# Values of the FATALS attributes
+```{r}
+table(fcpp16$FATALS)
+```
+
+
+```{r}
+fcpp16$FATALS <- mapvalues(fcpp16$FATALS, from = c("1", "2", "3", "4", "5", "6", "9"), to = c(0,1,1,1,1,1,1))
+
+table(fcpp16$FATALS)
+```
+The above result shows imbalanced data.
+
+```{r}
+fcpp16$FATALS <- as.factor(fcpp16$FATALS)
+```
+
+##### Using FSelectorRcpp #####
+
+# Using all the variables before pre-process using FSelectorRcpp
+```{r}
+#library(FSelectorRcpp)
+x <- fcpp
+y <-  fcpp$FATALS
+information_gain(x=x,y=y)
+```
+# Data has missing values...
+
+```{r}
+#library(FSelectorRcpp)
+x2 <- fcpp16
+y2 <-  fcpp16$FATALS
+information_gain(x=x2,y=y2)
+```
+
+
+##### Using FSelector #####
+
+All variables fcpp
+```{r}
+#library(FSelector)
+weights_fcpp <- information.gain(FATALS~., data = fcpp)
+row.names(weights_fcpp)[order(weights_fcpp, decreasing = TRUE)]
+```
+
+Pre-processed variables fcpp16
+```{r}
+#library(FSelector)
+weights_fcpp16 <- information.gain(FATALS~., data = fcpp16)
+row.names(weights_fcpp16)[order(weights_fcpp16, decreasing = TRUE)]
+```
+
+
+```{r}
+#library(FSelector)
+weights_fcpp16 <- information.gain(FATALS~., fcpp16)
+print(weights_fcpp16)
+```
+
+```{r}
+## Select top 15 variables
+subset_fcpp16_15 <- cutoff.k(weights_fcpp16, 15)
+subset_fcpp16_15
+```
+
+```{r}
+f15 <- as.simple.formula(subset_fcpp16_15, "FATALS")
+#row.names(f)[order(f, decreasing = TRUE)]
+print(f15)
+```
+
+
+
+```{r}
+#library(FSelector)
+weights_fcpp <- information.gain(FATALS~., fcpp)
+print(weights_fcpp)
+```
+
+```{r}
+## Select top 10 variables
+subset_fcpp_10 <- cutoff.k(weights_fcpp, 10)
+subset_fcpp_10
+```
+
+```{r}
+f_fcpp <- as.simple.formula(subset_fcpp_10, "FATALS")
+print(f_fcpp)
+```
+
+```{r}
+## Select top 15 variables
+subset_fcpp_15 <- cutoff.k(weights_fcpp, 15)
+subset_fcpp_15
+```
+
+
+# The random.forest.importance function is used to rate the importance of each feature in the classification of the outcome, chd. The function returns a data frame containing the name of each attribute and the importance value based on the mean decrease in accuracy.
+
+```{R}
+#library(ElemStatLearn)
+#library(FSelector)
+
+att.scores <- random.forest.importance(FATALS ~ ., fcpp16)
+att.scores
+```
+
+
+#The FSelector package offers several functions to choose the best features using the importance values returned by random.forest.importance. 
+# The cutoff.biggest.diff function automatically identifies the features which have a significantly higher importance value than other features. 
+# cutoff.k provides the k features with the highest importance values. 
+# Similarly, cutoff.k.percent returns k percent of the features with the highest importance values.
+```{R}
+f1 <- cutoff.biggest.diff(att.scores)
+print(f1)
+```
+
+```{r}
+f2 <- cutoff.k(att.scores, k = 15)
+f2
+```
+
+```{r}
+f3 <- cutoff.k.percent(att.scores, 0.4)
+f3
+```
+
+
+```{r}
+#library(FSelector)
+weights <- gain.ratio(FATALS ~., fcpp16)
+print(weights)
+```
+
+```{r}
+weights = chi.squared(FATALS ~., fcpp16)
+print(weights)
+```
+
+
+
+
+```{r}
+result <- cfs(FATALS ~ ., fcpp16)
+f_q <- as.simple.formula(result, "FATALS")
+print(f_q)
+```
+
+
+```{r}
+require(randomForest)
+Y <- fcpp16$FATALS
+fit=randomForest(factor(Y)~., data=fcpp16)
+fit
+```
+
+
+
+
