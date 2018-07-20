@@ -1,0 +1,587 @@
+---
+title: "CKME136: US Accident Fatalities 2016"
+author: "Ebun Odeniyi"
+output:
+  word_document: default
+  html_notebook: default
+  pdf_document: default
+  html_document:
+  df_print: paged
+  toc: true
+---
+
+
+```{r}
+# Nesessary packages:
+library(ggplot2)
+library(plyr)
+library(dplyr)
+library(mlbench)
+library(rpart.plot)
+```
+
+```{r}
+# Loading the data
+zooo16 <- read.csv("C:/Users/YENN/Desktop/UST/FARS2016N/accident2016.csv", header = T, stringsAsFactors = F)
+```
+
+# Remove TWAY_ID2 attribute, the only variable with missing values: <sum(is.na (accs$TWAY_ID2))> and TWAY_ID, not appropiate for the research project
+# Remove YEAR, MONTH, DAY, HOUR, MINUTE attributes - it's been merged into Timestamps 12:14
+# Remove WEATHER1, WEATHER2 attributes, are duplicate of the original WEATHER
+# Remove RAIL attribute, no relevant to the research
+
+## accs2016 <- accs[,-c(1:2,10:11,12:14,16:17,23:24,37:38,41)] ##  fraud16[,-c(1:2,10:14,16:17,23:24,37:38,41,53)]
+```{r}
+zooo <- zooo16[,-c(1,10:14,16:17,23:24,37:38,41)]
+```
+
+
+```{r}
+# Briefly on the data
+dim(zooo)
+glimpse(zooo)
+```
+
+```{r}
+# Factorising "FATALA" and replacing 1, 2, 3, 4, 5, 6 and 9 to "Yes", "No" respectively. 
+
+zooo$FATALS[zooo$FATALS==1]<-"Yes"
+zooo$FATALS[zooo$FATALS==2]<-"No"
+zooo$FATALS[zooo$FATALS==3]<-"No"
+zooo$FATALS[zooo$FATALS==4]<-"No"
+zooo$FATALS[zooo$FATALS==5]<-"No"
+zooo$FATALS[zooo$FATALS==6]<-"No"
+zooo$FATALS[zooo$FATALS==9]<-"No"
+zooo$FATALS<-as.factor(zooo$FATALS)
+```
+
+```{r}
+#zooo <- is.data.frame(zooo)
+```
+
+```{r}
+#' Get summary statistics
+summary(zooo)
+```
+
+# # A First Decision Tree
+#
+# Recursive Partitioning (similar to CART) uses the Gini index to make
+# splitting decisions and early stopping (pre-pruning).
+
+
+# Create Tree With Default Settings (uses pre-pruning)
+```{r}
+library(rpart)
+tree_default <- rpart(FATALS ~ ., data=zooo)
+tree_default
+```
+
+# Plotting
+
+```{r}
+library(rpart.plot)
+rpart.plot(tree_default, extra = 2, under = TRUE, varlen=0, faclen=0)
+```
+
+
+# ## Create a Full Tree
+#
+```{r}
+tree_full <- rpart(FATALS ~., data=zooo, control=rpart.control(minsplit=2, cp=0))
+rpart.plot(tree_full, extra = 2, under = TRUE,  varlen=0, faclen=0)
+tree_full
+```
+
+```{r}
+#' Training error on tree with pre-pruning
+head(predict(tree_default, zooo))
+pred <- predict(tree_default, zooo, type="class")
+head(pred)
+```
+
+```{r}
+confusion_table <- table(zooo$FATALS, pred)
+confusion_table
+```
+
+```{r}
+correct <- sum(diag(confusion_table))
+correct
+```
+
+```{r}
+error <- sum(confusion_table)-correct
+error
+```
+
+```{r}
+accuracy <- correct / (correct+error)
+accuracy
+```
+
+```{r}
+#' Use a function for accuracy
+accuracy <- function(truth, prediction) {
+    tbl <- table(truth, prediction)
+    sum(diag(tbl))/sum(tbl)
+}
+```
+
+```{r}
+accuracy(zooo$FATALS, pred)
+```
+
+```{r}
+#' Training error of the full tree
+accuracy(zooo$FATALS, predict(tree_full, zooo, type="class"))
+```
+
+```{r}
+#' Get a confusion table with more statistics (using caret)
+library(caret)
+confusionMatrix(data = pred, reference = zooo$FATALS)
+```
+
+# Model Evaluation
+
+# Use a simple split into 2/3 training and 1/3 testing data. Find the size of the training set.
+```{r}
+n_train <- as.integer(nrow(zooo)*.66)
+n_train
+```
+
+```{r}
+#' Randomly choose the rows of the training examples.
+train_id <- sample(1:nrow(zooo), n_train)
+head(train_id)
+```
+
+```{r}
+#' Split the data
+train <- zooo[train_id,]
+test <- zooo[-train_id, colnames(zooo) != "FATALS"]
+test_type <- zooo[-train_id, "FATALS"]
+```
+
+```{r}
+tree <- rpart(FATALS ~., data=train,control=rpart.control(minsplit=2))
+```
+
+```{r}
+#' Training error
+accuracy(train$FATALS, predict(tree, train, type="class"))
+```
+
+```{r}
+#' Generalization error
+accuracy(test_type, predict(tree, test, type="class"))
+```
+
+```{r}
+#' ### 10-Fold Cross Validation
+
+index <- 1:nrow(zooo)
+index <- sample(index) ### shuffle index
+fold <- rep(1:10, each=nrow(zooo)/10)[1:nrow(zooo)]
+
+folds <- split(index, fold) ### create list with indices for each fold
+```
+
+```{r}
+#' Do each fold
+accs <- vector(mode="numeric")
+for(i in 1:length(folds)) {
+    tree <- rpart(FATALS ~., data=zooo[-folds[[i]],], control=rpart.control(minsplit=2))
+    accs[i] <- accuracy(zooo[folds[[i]],]$FATALS, predict(tree, zooo[folds[[i]],], type="class"))
+}
+accs
+```
+
+```{r}
+#' Report the average
+mean(accs)
+```
+
+# Enable multi-core
+
+```{r}
+library(doParallel)
+registerDoParallel()
+```
+
+#' ### k-fold Cross Validation
+
+#' Train also tries to tune extra parameters by trying different values.
+#' For rpart, train tries to tune the cp parameter (tree complexity)
+#' using accuracy to chose the best model. I set minsplit to 2 since we have
+#' not much data.
+
+
+```{r}
+library(caret)
+fit <- train(FATALS ~ ., data = zooo , method = "rpart",
+	control=rpart.control(minsplit=2),
+	trControl = trainControl(method = "cv", number = 10),
+	tuneLength=5)
+fit
+```
+
+```{r}
+#' __Note:__ Train has built 10 trees. Accuracy and kappa for each tree/test fold
+#' are obtained.
+fit$resample
+```
+
+#' A model using the best tuning parameters
+#' and using all the data is available as `fit$finalModel`.
+
+```{r}
+rpart.plot(fit$finalModel, extra = 2, under = TRUE,  varlen=0, faclen=0)
+```
+
+#' __Note:__ For many models, caret converts factors into dummy coding, i.e.,
+#' a single 0-1 variable for each factor level. 
+
+```{r}
+varImp(fit)
+```
+
+#' Here is the variable importance without competing splits.
+
+```{r}
+varImp(fit, compete = FALSE)
+dotPlot(varImp(fit, compete=FALSE))
+```
+
+
+```{r}
+fit <- train(FATALS ~ ., data = zooo, method = "rpart",
+	control=rpart.control(minsplit=2),
+	trControl = trainControl(method = "boot", number = 10),
+	tuneLength=5)
+fit
+```
+
+#' Partition data 66%/34%. 
+
+```{r}
+inTrain <- createDataPartition(y=zooo$FATALS, p = .66, list=FALSE)
+training <- zooo[ inTrain,]
+testing <- zooo[-inTrain,]
+```
+
+#' Finding best model (trying more values for tuning using `tuneLength`).
+
+```{r}
+fit <- train(FATALS ~ ., data = training, method = "rpart",
+	control=rpart.control(minsplit=2),
+	trControl = trainControl(method = "cv", number = 10),
+	tuneLength=20)
+fit
+```
+
+```{r}
+plot(fit)
+```
+
+#' Use the best model on the test data
+
+```{r}
+fit$finalModel
+pred <- predict(fit, newdata = testing)
+head(pred)
+```
+
+#' Confusion matrix (incl. confidence interval) on test data
+
+```{r}
+confusionMatrix(data = pred, testing$FATALS)
+```
+
+##### Model Comparison #####
+
+```{r}
+library(caret)
+```
+
+#' Creating fixed sampling scheme (10-folds) so as to compare the different models using exactly the same folds.
+
+```{r}
+train <- createFolds(zooo$FATALS,k=10)
+```
+
+#' Build models
+
+```{r}
+rpartFit <- train(FATALS ~ .,  data = zooo, method = "rpart",
+	tuneLength = 10,
+	trControl = trainControl(
+		method = "cv", indexOut = train))
+```
+
+#' __Note:__ for kNN one might want to scale the data first. Logicals will
+#' be used as 0-1 variables in euclidean distance calculation.
+
+```{r}
+knnFit <- train(FATALS ~ .,  data = zooo, method = "knn",
+	tuneLength = 10,
+	trControl = trainControl(
+		method = "cv", indexOut = train))
+```
+
+#' Compare accuracy
+
+```{r}
+resamps <- resamples(list(
+		CART = rpartFit,
+		kNearestNeighbors = knnFit
+		))
+summary(resamps)
+```
+
+#' Plot the accuracy of the two models models for each resampling.
+
+```{r}
+xyplot(resamps)
+```
+
+#'
+#' Find out if one models is statistically better than the other (is
+#' the difference in accuracy is not zero).
+
+```{r}
+difs <- diff(resamps)
+difs
+summary(difs)
+```
+
+
+#' # Feature Selection
+
+```{r}
+library(FSelector)
+```
+
+#' ## Univariate Feature Importance Score
+#' These scores measure how related
+#' each feature is to the class variable.
+
+```{r}
+weights <- chi.squared(FATALS ~ ., data=zooo)
+weights
+```
+
+#' plot importance (ordered)
+
+```{r}
+str(weights)
+```
+
+```{r}
+o <- order(weights$attr_importance)
+dotchart(weights$attr_importance[o], labels = rownames(weights)[o],
+  xlab = "Importance")
+```
+
+#' Get the 5 best features
+
+```{r}
+subset <- cutoff.k(weights, 5)
+subset
+```
+
+#' Get the 10 best features
+
+```{r}
+subset10 <- cutoff.k(weights, 10)
+subset10
+```
+
+#' Get the 15 best features
+
+```{r}
+subset15 <- cutoff.k(weights, 15)
+subset15
+```
+
+#' Use only the best 5 features to build a model
+
+```{r}
+f <- as.simple.formula(subset, "FATALS")
+f
+```
+
+```{r}
+m <- rpart(f, data=zooo)
+rpart.plot(m, extra = 2, under = TRUE,  varlen=0, faclen=0)
+```
+
+#' There are many alternative ways to calculate univariate importance scores using FSelector.
+
+
+#' Use only the best 15 features to build a model
+
+```{r}
+f2 <- as.simple.formula(subset15, "FATALS")
+f2
+```
+
+```{r}
+m2 <- rpart(f2, data=zooo)
+rpart.plot(m2, extra = 2, under = TRUE,  varlen=0, faclen=0)
+```
+
+
+```{r}
+oneR(FATALS ~ ., data=zooo)
+```
+
+```{r}
+gain.ratio(FATALS ~ ., data=zooo)
+```
+
+```{r}
+information.gain(FATALS ~ ., data=zooo)
+```
+
+#' #Features Subset Selection
+
+# cfs uses correlation/entropy with best first search
+```{r}
+cfs(FATALS ~ ., data=zooo)
+```
+
+
+#' A consistency measure can also be used with best first search.
+
+```{r}
+consistency(FATALS ~ ., data=zooo)
+```
+
+
+
+```{r}
+evaluator <- function(subset) {
+  m <- train(as.simple.formula(subset, "FATALS"), data = zooo, method = "rpart",
+    trControl = trainControl(method = "boot", number = 5), tuneLength = 0)
+  results <- m$resample$Accuracy
+  print(subset)
+  print(mean(results))
+  mean(results)
+}
+```
+
+#' Start with all features (not the class variable)
+
+```{r}
+features <- names(zooo)[1:37]
+```
+
+# #Several search strategies available
+```{r}
+subset <- backward.search(features, evaluator)
+```
+
+```{r}
+subset <- forward.search(features, evaluator)
+```
+
+```{r}
+subset <- best.first.search(features, evaluator)
+```
+
+```{r}
+subset <- hill.climbing.search(features, evaluator)
+```
+
+```{r}
+subset
+```
+
+
+#'
+#' # Using Dummy Variables for Factors
+#'
+#' Nominal features (factors) are often encoded as a series of 0-1 dummy variables.
+#' For example, let us try to predict if an animal is a predator given the type.
+#' First we use the original encoding of type as a factor with several values.
+
+```{r}
+tree_predator <- rpart(ST_CASE ~ FATALS, zooo)
+rpart.plot(tree_predator, extra = 1, under = TRUE, varlen=0, faclen=0)
+```
+
+
+#' __Note:__ Some splits use multiple values. Building the tree will become
+#' very slow if a factor has many values.
+#'
+#' Recode type as a set of 0-1 dummy variables using `class2ind`. See also
+#' `? dummyVars` in package `caret`.
+
+```{r}
+library(caret)
+zooo_dummy <- as.data.frame(class2ind(zooo$FATALS))
+zooo_dummy$ST_CASE <- zooo$ST_CASE
+head(zooo_dummy)
+```
+
+```{r}
+tree_predator <- rpart(ST_CASE ~ ., zooo_dummy)
+rpart.plot(tree_predator, extra = 1, under = TRUE, varlen=0, faclen=0)
+```
+
+
+#' Since we have 0-1 variables, insect >= 0.5 yes means that the insect dummy
+#' variable has a value of 1 (and not 0) and therefore it is an insect.
+#'
+#' Using `caret` on the orginal factor encoding automatically translates factors
+#' (here type) into 0-1 dummy variables. The reason is that some models cannot
+#' directly use factors.
+
+```{r}
+fit <- train(ST_CASE ~ FATALS, zooo, method = "rpart")
+rpart.plot(fit$finalModel, extra = 1, under = TRUE, varlen=0, faclen=0)
+```
+
+#'
+#' # Dealing With the Class Imbalance Problem
+#'
+#' __Note:__ We use here the training data for testing. You should use a
+#' separate testing data set!
+
+```{r}
+zoom <- zooo16
+zoom$FATALS <- factor(zooo$FATALS == "single",
+  levels = c(FALSE, TRUE), labels =c("Yes", "No"))
+#' Do not forget to make the class variable a factor (a nominal variable)
+#' or you will get a regression tree instead of a classification tree.
+```
+
+
+```{r}
+#summary(zoom)
+```
+
+```{r}
+#' See if we have a class imbalance problem.
+barplot(table(zoom$FATALS), xlab = "single vs multiple Fatalities", ylab="Count")
+```
+
+#' the new class variable is clearly not balanced. This is a problem
+#' for building a tree!
+#'
+#' ## Option 1: Use the Data As Is and Hope For The Best
+
+
+
+```{r}
+#confusionMatrix(data = predict(fit, single()),
+#  ref = zoom$FATALS, positive = "single")
+```
+
+
+
+
+
+
