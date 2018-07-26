@@ -1,0 +1,674 @@
+---
+title: "CKME_136 Predictive Analysis on US Traffic Fatalities Project in R"
+author: "Ebun Odeniyi"
+output:
+  word_document: default
+  html_notebook: default
+  pdf_document: default
+  html_document:
+  df_print: paged
+  toc: true
+---
+
+ 
+
+```{r}
+rm(list = ls())
+```
+
+
+```{r}
+# Nesessary packages:
+library(plyr)
+library(ggplot2)
+library(dplyr)
+library(randomForest)
+library(caret)
+library(ROSE) 
+library(e1071)
+library(nnet)
+```
+
+
+```{r}
+# Importing the data
+faux <- read.csv("C:/Users/YENN/Desktop/UST/FARS2016N/accident2016.csv", header = T, stringsAsFactors = F)
+```
+
+
+# Labelling missing values (9, 99, 999, 9999, 99999) as NAs
+```{r}
+faux$COUNTY[faux$COUNTY == 999] <- NA
+faux$CITY[faux$CITY == 9999] <- NA
+faux$HOUR[faux$HOUR == 99] <- NA
+faux$MINUTE[faux$MINUTE == 999] <- NA
+faux$NHS[faux$NHS == 9] <- NA
+faux$RUR_URB[faux$RUR_URB == 9] <- NA
+faux$FUNC_SYS[faux$FUNC_SYS == 99] <- NA
+faux$RD_OWNER[faux$RD_OWNER == 99] <- NA
+faux$MILEPT[faux$MILEPT == 99999] <- NA
+faux$SP_JUR[faux$SP_JUR == 9] <- NA
+faux$MAN_COLL[faux$MANINT == 99] <- NA
+faux$REL_ROAD[faux$REL_ROAD == 99] <- NA
+faux$WEATHER1[faux$WEATHER1 == 99] <- NA
+faux$WEATHER2[faux$WEATHER2 == 99] <- NA
+faux$WEATHER[faux$WEATHER == 99] <- NA
+faux$CF1[faux$CF1 == 99] <- NA
+faux$CF2[faux$CF2_COLL == 99] <- NA
+faux$RELJCT1[faux$RELJCT1 == 99] <- NA
+faux$RELJCT2[faux$RELJCT2 == 99] <- NA
+faux$TYP_INT[faux$TYP_ == 99] <- NA
+faux$CF3[faux$CF3 == 99] <- NA
+faux$FATALS[faux$FATALS == 9] <- NA
+```
+
+# 
+```{r}
+faux <- na.omit(faux)
+```
+
+
+# Remove TWAY_ID2 attribute, the only variable with missing values: <sum(is.na (accs$TWAY_ID2))> and TWAY_ID, not appropiate for the research project
+# Remove YEAR, MONTH, DAY, HOUR, MINUTE attributes - it's been merged into Timestamps 12:14
+# Remove WEATHER1, WEATHER2 attributes, are duplicate of the original WEATHER
+# Remove RAIL attribute, no relevant to the research
+
+## accs2016 <- accs[,-c(1:2,10:11,12:14,16:17,23:24,37:38,41)] ##  fraud16[,-c(1:2,10:14,16:17,23:24,37:38,41,53)]
+```{r}
+datafaux <- faux[,-c(1:2,10:14,16:17,23:24,37:38,41)]
+```
+
+
+```{r}
+table(datafaux$FATALS)
+```
+
+```{r}
+# Factorising "Class" and replacing 1 and 0 to "Yes", "No" respectively and making the response variable as factor. 
+
+datafaux$FATALS[datafaux$FATALS==1]<-"No"
+datafaux$FATALS[datafaux$FATALS==2]<-"Yes"
+datafaux$FATALS[datafaux$FATALS==3]<-"Yes"
+datafaux$FATALS[datafaux$FATALS==4]<-"Yes"
+datafaux$FATALS[datafaux$FATALS==5]<-"Yes"
+datafaux$FATALS[datafaux$FATALS==6]<-"Yes"
+
+datafaux$FATALS<-as.factor(datafaux$FATALS)
+```
+
+
+```{r}
+table(datafaux$FATALS)
+prop.table(table(datafaux$FATALS))
+```
+
+
+
+```{r}
+barplot(prop.table(table(datafaux$FATALS)),
+        col = rainbow(2),
+        ylim = c(0,1),
+        main = "Fatality Rate Distribution")
+```
+
+### Data partition ###
+
+```{r}
+set.seed(123)
+index <- sample(2, nrow(datafaux), replace = TRUE, prob = c(0.7, 0.3))
+
+train <- datafaux[index==1,]
+test <- datafaux[index==2,]
+```
+
+
+```{r}
+table(train$FATALS)
+prop.table(table(datafaux$FATALS))
+```
+
+```{r}
+summary(train)
+```
+
+
+
+#' #Predictive Model (Random Forest)
+```{r}
+#library(randomForest)
+rftrain <- randomForest(FATALS~., data = train)
+```
+
+# Predictive Model Evaluation with test data
+```{r}
+#library(caret)
+#library(e1071)
+```
+
+```{r}
+confusionMatrix(predict(rftrain, test), test$FATALS, positive = "Yes")
+```
+
+
+```{r}
+confusionMatrix(predict(rftrain, test), test$FATALS, positive = "No")
+```
+
+```{r}
+table (train$FATALS)
+prop.table(table(train$FATALS))
+```
+
+
+
+# undersampling for better specificity:  reduce observations from the majority class then you use undersampling
+```{r}
+# Underampling
+#library(ROSE)
+datafaux_under <- ovun.sample(FATALS ~ ., data = train, method = "under", N = 3386, seed = 1)$data
+table(datafaux_under$FATALS)
+```
+
+# Oversampling for better sensitivity: increase observations from the minority class then you use oversampling
+```{r}
+# Oversampling
+datafaux_over <- ovun.sample(FATALS ~ ., data = train, method = "over",N = 42904, seed = 1)$data
+table(datafaux_over$FATALS)
+```
+
+
+
+```{r}
+# Both
+datafaux_both <- ovun.sample(FATALS ~ ., data = train, method = "both", p=0.5, N=23145, seed = 1)$data
+table(datafaux_both$FATALS)
+```
+
+# renaming datafile
+```{r}
+datafaux7<- datafaux_both 
+```
+
+# Just checking out this:
+```{r}
+#write.table(datafaux7, file = "C:/Users/YENN/Desktop/Dataset/accid_cleaned5.csv")
+```
+
+
+
+##### Using FSelector #####
+
+# Using FSelector #
+
+All variables 
+```{r}
+library(FSelector)
+weights_1 <- information.gain(FATALS~., data = datafaux7)
+row.names(weights_1)[order(weights_1, decreasing = TRUE)]
+```
+
+
+
+```{r}
+print(weights_1)
+```
+
+
+```{r}
+## Select top 15 variables
+subset_15 <- cutoff.k(weights_1, 15)
+subset_15
+```
+
+```{r}
+f15 <- as.simple.formula(subset_15, "FATALS")
+#row.names(f)[order(f, decreasing = TRUE)]
+print(f15)
+```
+
+
+```{r}
+## Select top 10 variables
+subset_10 <- cutoff.k(weights_1, 10)
+subset_10
+```
+
+
+```{r}
+f10 <- as.simple.formula(subset_10, "FATALS")
+#row.names(f)[order(f, decreasing = TRUE)]
+print(f10)
+```
+
+
+
+# USing the selected features (PERSONS+PERMVIT+PEDS+PERNOTMVIT+HARM_EV+MAN_COLL+LATITUDE+VE_TOTAL+VE_FORMS+MILEPT+ROUTE+RUR_URB+RD_OWNER+DRUNK_DR)select(datafaux7, PERSONS, PERMVIT, PEDS, PERNOTMVIT, HARM_EV, MAN_COLL, LATITUDE, VE_TOTAL, VE_FORMS, MILEPT, ROUTE, RUR_URB, RD_OWNER, DRUNK_DR, FATALS)
+```{r}
+data77 <- select(datafaux7, PERMVIT, PEDS, PERNOTMVIT, HARM_EV, MAN_COLL, VE_FORMS, VE_TOTAL, RUR_URB, MILEPT, ROUTE,DRUNK_DR, RD_OWNER, HOSP_MN, HOSP_HR, FATALS)
+#data77
+```
+
+
+```{r}                  
+#cor(data77)
+```
+
+
+```{r}
+plot(data77)
+```
+
+```{r}
+library(corrplot)
+#corrplot(cor(data77))
+#corrplot(cor(data77), method = c("number"))
+```
+
+What is the correlation between the attributes other than FATALS variable?
+
+# Remove FATALS
+```{r}
+data77_f <- data77[,-c(15)]
+
+cor(data77_f)
+```
+
+
+
+```{r}
+plot(data77_f)
+#corrplot(cor(data77_f))
+corrplot(cor(data77_f), method = c("number"))
+```
+
+
+```{r}
+library(RColorBrewer)
+
+M <-cor(data77_f)
+corrplot(M, type="upper", order="hclust",
+         col=brewer.pal(n=8, name="RdYlBu"))
+```
+
+
+```{r}
+mcor<-round(cor(data77_f),2)
+mcor
+```
+
+```{r}
+sapply(data77, class)
+```
+
+```{r}
+#data77_f <- as.numeric(data77_f)
+```
+
+# Graph the frequency distribution of FATALS variable
+```{r}
+#hist(data77_f$FATALS, freq = T)
+
+#accs_LM <- lm(formula = FATALS ~ ., data = data77_f)
+
+#summary(data77_f)
+
+```
+
+
+```{R}
+#library(ElemStatLearn)
+#library(FSelector)
+
+att.scores <- random.forest.importance(FATALS ~ ., datafaux7)
+att.scores
+```
+
+
+#The FSelector package offers several functions to choose the best features using the importance values returned by random.forest.importance. 
+# The cutoff.biggest.diff function automatically identifies the features which have a significantly higher importance value than other features. 
+# cutoff.k provides the k features with the highest importance values. 
+# Similarly, cutoff.k.percent returns k percent of the features with the highest importance values.
+```{R}
+f1 <- cutoff.biggest.diff(att.scores)
+print(f1)
+```
+
+```{r}
+f2 <- cutoff.k(att.scores, k = 15)
+f2
+```
+
+```{r}
+f3 <- cutoff.k.percent(att.scores, 0.4)
+f3
+```
+
+
+
+# Using all the variables before pre-process using FSelectorRcpp
+```{r}
+library(FSelectorRcpp)
+x <- datafaux7
+y <-  datafaux7$FATALS
+information_gain(x=x,y=y)
+```
+
+
+FSelectorRcpp
+```{r}
+x <- information_gain(FATALS ~ ., datafaux7)
+cut_attrs(attrs = x)
+```
+
+
+ 
+```{r}
+to_formula(cut_attrs(attrs = x), "FATALS")
+cut_attrs(attrs = x, k = 1)
+```
+
+
+#From FSelectorRcpp, variable selected
+# (LATITUDE, NOT_MIN, LONGITUD, WEATHER, ARR_MIN, NOT_HOUR, MILEPT, DAY_WEEK, ARR_HOUR, HOSP_MN, FUNC_SYS, HOSP_HR, PERMVIT, PERSONS, LGT_COND)
+
+# From FSelector, 15 variable selected:
+# select(datafaux7, PERMVIT, PEDS, PERNOTMVIT, HARM_EV, MAN_COLL, VE_FORMS, VE_TOTAL, RUR_URB, MILEPT, ROUTE,DRUNK_DR, RD_OWNER, HOSP_MN, HOSP_HR, FATALS)
+
+# Create a Validation Dataset
+
+# By spliting the loaded dataset into two, 80% of which we will used to train our models and 20% that we will hold back as a validation dataset.
+# create a list of 80% of the rows in the original dataset we can use for training
+
+```{r}
+# select 20% of the data for validation
+set.seed(7)
+validation_index <- createDataPartition(data77$FATALS, p=0.80, list=FALSE)
+```
+
+```{r}
+# use the remaining 80% of data to training and testing the models
+set.seed(7)
+validation <- data77[-validation_index,]
+dataset <- data77[validation_index,]
+```
+
+```{r}
+table(validation$FATALS)
+prop.table(table(validation$FATALS))*100
+```
+
+```{r}
+table(data77$FATALS)
+prop.table(table(dataset$FATALS))*100
+```
+
+#'You now have' The above is the training data in the dataset variable and a validation set that will be used later in the validation variable.
+
+#Note that I've replaced the dataset variable with the 80% sample of the dataset. This was an attempt to keep the rest of the code simpler and readable.
+
+
+```{r}
+# dimensions of dataset
+#dim(dataset)
+```
+
+
+#3' Types of Attributes
+
+#It is a good idea to get an idea of the types of the attributes. They could be doubles, integers, strings, factors and other types.
+
+#Knowing the types is important as it will give you an idea of how to better summarize the data you have and the types of transforms you might need to use to prepare the data before you model it.
+
+```{r}	
+# list types for each attribute
+sapply(data77, class)
+```
+
+
+
+#3.3 Peek at the Data
+
+It is also always a good idea to actually eyeball your data.
+```{r}
+# take a peek at the first 5 rows of the data
+head(data77)
+```
+
+
+3.4 Levels of the Class
+```{r}
+# list the levels for the class
+levels(data77$FATALS)
+```
+
+#This is a binary classification.
+
+#' Class Distribution
+
+Let's now take a look at the number of instances (rows) that belong to each class. We can view this as an absolute count and as a percentage.
+
+```{r}	
+# summarize the class distribution
+percentage <- prop.table(table(data77$FATALS)) * 100
+cbind(freq=table(data77$FATALS), percentage=percentage)
+```
+
+
+3.6 Statistical Summary
+
+Now finally, we can take a look at a summary of each attribute.
+
+This includes the mean, the min and max values as well as some percentiles (25th, 50th or media and 75th e.g. values at this points if we ordered all the values for an attribute).
+
+```{r}
+# summarize attribute distributions
+summary(data77)
+```
+
+
+# Test Harness
+
+We will 10-fold crossvalidation to estimate accuracy.
+
+This will split the dataset into 10 parts, train in 9 and test on 1 and release for all combinations of train-test splits. This process will be repeated 3 times for each algorithm with different splits of the data into 10 groups, in an effort to get a more accurate estimate.
+
+
+```{r}
+# Run algorithms using 10-fold cross validation
+control <- trainControl(method="cv", number=10)
+metric <- "Accuracy"
+```
+
+
+I am using the metric of "Accuracy" to evaluate models. This is a ratio of the number of correctly predicted instances in divided by the total number of instances in the dataset multiplied by 100 to give a percentage (e.g. 95% accurate). We will be using the metric variable when we run build and evaluate each model next.
+
+#' Build Models
+
+Evaluating 5 different algorithms:
+
+    Linear Discriminant Analysis (LDA)
+    Classification and Regression Trees (CART).
+    k-Nearest Neighbors (kNN).
+    Support Vector Machines (SVM) with a linear kernel.
+    Random Forest (RF)
+    Generalized Linear Model (glm)
+    Gradient Boosting Machine (gbm)
+    LogitBoost
+
+This is a good mixture of simple linear (LDA), nonlinear (CART, kNN) and complex nonlinear methods (SVM, RF). We reset the random number seed before reach run to ensure that the evaluation of each algorithm is performed using exactly the same data splits. It ensures the results are directly comparable.
+
+```{r}
+# To build five models:
+# a) linear algorithms - Linear Discriminant Analysis (LDA)
+set.seed(7)
+fit.lda <- train(FATALS~., data=data77, method="lda", metric=metric, trControl=control)
+fit.lda
+```
+
+```{r}
+# b) nonlinear algorithms
+# Classification and Regression Trees (CART)
+set.seed(7)
+fit.cart <- train(FATALS~., data=data77, method="rpart", metric=metric, trControl=control)
+fit.cart
+```
+
+```{r}
+# k-Nearest Neighbors (kNN)
+set.seed(7)
+fit.knn <- train(FATALS~., data=data77, method="knn", metric=metric, trControl=control)
+fit.knn
+```
+
+```{r}
+# c) advanced algorithms
+# Support Vector Machines (SVM) with a linear kernel
+set.seed(7)
+fit.svm <- train(FATALS~., data=data77, method="svmRadial", metric=metric, trControl=control)
+fit.svm
+```
+
+
+```{r}
+# Random Forest (rf)
+set.seed(7)
+fit.rf <- train(FATALS~., data=data77, method="rf", metric=metric, trControl=control)
+fit.rf
+```
+
+
+```{r}
+# Generalized Linear Model (glm)
+set.seed(7)
+fit.glm <- train(FATALS~., data=data77, method="glm", metric=metric, trControl=control)
+fit.glm
+```
+
+
+```{r}
+# Gradient Boosting Machine (gbm)
+#set.seed(7)
+#fit.gbm <- train(FATALS~., data=data77, method="gbm", metric=metric, trControl=control)
+#fit.gbm
+```
+
+```{r}
+# mda
+#set.seed(7)
+#fit.mda <- train(FATALS~., data=dataset, method="mda", metric=metric, trControl=control)
+#fit.mda
+```
+
+
+```{r}
+# LogitBoost
+set.seed(7)
+fit.LogitBoost <- train(FATALS~., data=data77, method="LogitBoost", metric=metric, trControl=control)
+fit.LogitBoost
+```
+
+
+# Select Best Model
+
+There are 5 models and accuracy estimations for each. I'm going to compare the models to each other and select the most accurate.
+```{r}
+# summarize accuracy of models
+results <- resamples(list(lda=fit.lda, cart=fit.cart, knn=fit.knn, svm=fit.svm, rf=fit.rf, glm=fit.glm, fit.LogitBoost))
+summary(results)
+```
+
+
+
+Plotting of the model evaluation results and compare the spread and the mean accuracy of each model. There is a population of accuracy measures for each algorithm because each algorithm was evaluated 10 times (10 fold cross validation).
+
+```{r}
+# compare accuracy of models
+dotplot(results)
+```
+
+We can see that the most accurate model in this case was LDA:
+Comparison of Machine Learning Algorithms on Iris Dataset in R
+
+Comparison of Machine Learning Algorithms on Iris Dataset in R
+
+```{r}
+#The results for just the rf model can be summarized.
+# summarize Best Model
+print(fit.rf)
+```
+
+
+```{r}
+#The results for just the svm model can be summarized.
+# summarize Best Model
+print(fit.svm)
+```
+
+
+```{r}
+#The results for just the cart model can be summarized.
+# summarize Best Model
+print(fit.cart)
+```
+
+
+# 6. Make Predictions
+
+The LDA was the most accurate model. Now we want to get an idea of the accuracy of the model on our validation set.
+
+This will give us an independent final check on the accuracy of the best model. It is valuable to keep a validation set just in case you made a slip during such as overfitting to the training set or a data leak. Both will result in an overly optimistic result.
+
+We can run the rf model directly on the validation set and summarize the results in a confusion matrix.
+
+```{r}
+# estimate skill of rf on the validation dataset
+predictions <- predict(fit.rf, validation)
+confusionMatrix(predictions, validation$FATALS)
+```
+
+`
+
+```{r}
+# estimate skill of SVM on the validation dataset
+predictions <- predict(fit.svm, validation)
+confusionMatrix(predictions, validation$FATALS)
+```
+
+
+
+```{r}
+# estimate skill of LogitBoost on the validation dataset
+predictions <- predict(fit.LogitBoost, validation)
+confusionMatrix(predictions, validation$FATALS)
+```
+
+```{r}
+# estimate skill of lda on the validation dataset
+predictions <- predict(fit.lda, validation)
+confusionMatrix(predictions, validation$FATALS)
+```
+
+
+```{r}
+# estimate skill of rf on the validation dataset
+predictions <- predict(fit.rf, validation)
+confusionMatrix(predictions, validation$FATALS)
+```
+
+
+
+```{r}
+# estimate skill of knn on the validation dataset
+predictions <- predict(fit.knn, validation)
+confusionMatrix(predictions, validation$FATALS)
+```
+
+
+```{r}
+#sessionInfo()
+```
+
+
+
+
+
