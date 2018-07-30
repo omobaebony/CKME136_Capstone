@@ -12,6 +12,7 @@ output:
 
 Predictive Analysis on US Traffic Fatalities Project in R
 =========================================================
+Githublink: https://github.com/omobaebony/CKME136_Capstone
 
 This R project is in fulfilment of the Big Data Analysis program which will not only show some some basic data analysis methods but it will also show you how to implement some of the more sophisticated techniques available today. I will be looking into traffic accident data from the National Highway Traffic Safety Administration and try to predict fatal accidents using state-of-the-art statistical learning techniques.   
 
@@ -552,9 +553,9 @@ table(data77$FATALS)
 prop.table(table(dataset$FATALS))*100
 ```
 
-#'You now have' The above is the training data in the dataset variable and a validation set that will be used later in the validation variable.
+The above is the training data in the dataset variable and a validation set that will be used later in the validation variable.
 
-#Note that I've replaced the dataset variable with the 80% sample of the dataset. This was an attempt to keep the rest of the code simpler and readable.
+#Note that I've replaced the dataset variable with the 80% sample of the dataset. This was an attempt to keep the rest of the code simple and readable.
 
 
 ```{r}
@@ -563,11 +564,7 @@ dim(dataset)
 ```
 
 
-#3' Types of Attributes
-
-#It is a good idea to get an idea of the types of the attributes. They could be doubles, integers, strings, factors and other types.
-
-#Knowing the types is important as it will give you an idea of how to better summarize the data you have and the types of transforms you might need to use to prepare the data before you model it.
+#' Attributes Types
 
 ```{r}	
 # list types for each attribute
@@ -576,9 +573,7 @@ dim(dataset)
 
 
 
-#3.3 Peek at the Data
-
-It is also always a good idea to actually eyeball your data.
+# Peek at the Data
 ```{r}
 # take a peek at the first 5 rows of the data
 head(data77)
@@ -595,8 +590,6 @@ levels(data77$FATALS)
 
 #' Class Distribution
 
-Let's now take a look at the number of instances (rows) that belong to each class. We can view this as an absolute count and as a percentage.
-
 ```{r}	
 # summarize the class distribution
 percentage <- prop.table(table(data77$FATALS)) * 100
@@ -604,11 +597,11 @@ cbind(freq=table(data77$FATALS), percentage=percentage)
 ```
 
 
-3.6 Statistical Summary
+Statistical Summary
 
-Now finally, we can take a look at a summary of each attribute.
+Summary of each attribute.
 
-This includes the mean, the min and max values as well as some percentiles (25th, 50th or media and 75th e.g. values at this points if we ordered all the values for an attribute).
+This includes the mean, the min and max values as well as some percentiles (25th, 50th or media and 75th e.g. values).
 
 ```{r}
 # summarize attribute distributions
@@ -630,7 +623,7 @@ metric <- "Accuracy"
 ```
 
 
-I am using the metric of "Accuracy" to evaluate models. This is a ratio of the number of correctly predicted instances in divided by the total number of instances in the dataset multiplied by 100 to give a percentage (e.g. 95% accurate). I'll be using the metric variable when to run build and evaluate each model next.
+Using the metric of "Accuracy" to evaluate models. This is a ratio of the number of correctly predicted instances in divided by the total number of instances in the dataset multiplied by 100 to give a percentage (e.g. 95% accurate). I'll be using the metric variable when to run build and evaluate each model next.
 
 #' Build Models
 
@@ -791,7 +784,7 @@ roc.data <- data_frame(
   specificity = res.roc$specificities
 )
 # Get the probality threshold for specificity = 0.6
-roc.data %>% filter(specificity >= 0.6)
+roc.data %>% filter(specificity >= 0.7)
 ```
 
 
@@ -802,7 +795,7 @@ plot.roc(res.roc, print.auc = TRUE, print.thres = "best")
 
 
 ```{r}
-plot.roc(res.roc, print.thres = c(0.3, 0.5, 0.7))
+plot.roc(res.roc, print.thres = c(0.5, 1.0, 0.0))
 ```
 
 
