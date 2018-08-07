@@ -1,0 +1,229 @@
+---
+title: "2016 US Traffic Fatalities Visualization "
+author: "Ebunoluwa Odeniyi"
+output: html_notebook
+---
+
+
+
+```{r}
+rm(list = ls())
+```
+
+```{r}
+library(ggplot2)
+library(foreign)
+library(dplyr)
+```
+
+```{r}
+accident2016 <- read.csv("C:/Users/YENN/Desktop/finals/accident2016.csv", header = TRUE, sep = ",", stringsAsFactors = FALSE)
+person2016 <- read.csv("C:/Users/YENN/Desktop/finals/person2016.csv", header = TRUE, sep = ",", stringsAsFactors = FALSE)
+```
+
+
+Give some idea of the complexity of the data files
+
+A detailed roadmap of the US geographical locations where an accident resulting in at least one fatality was recording in 2016 is the result.
+
+```{r}
+qplot(LONGITUD, LATITUDE, data=subset(accident2016, dplyr::between(LONGITUD, -130, 0)), size=I(.5), alpha=I(0.5), col=I("red"), main = "US Geographical Locations Resulting in at Least One Fatality in 2016")
+```
+
+
+
+
+# When do people die on the roads?
+
+An overview of when fatal accidents happen on the road: on weekdays, the number of deaths peaks twice a day during times when people commute. During the morning commute the number of deaths shows a small peak with a mode around 6am. A second, much bigger mode follows the afternoon commute with a peak at around 6pm. These peaks in the number of deaths is by far outdone by the number of deaths from fatal accidents on weekend nights and early mornings starting with Friday afternoon and lasting until Sunday around 10pm.
+
+
+```{r}
+#library(dplyr)
+drunk_by_day <- accident2016 %>% group_by(DAY_WEEK, HOUR) %>% 
+  summarize(
+    accidents = n(),
+    deaths = sum(FATALS),
+    drunk = sum(DRUNK_DR*FATALS > 0)
+  )
+drunk_by_day$drunkPerc <- with(drunk_by_day, drunk/deaths*100)
+drunk_by_day$HOUR[drunk_by_day$HOUR == 99] <- NA
+drunk_by_day$DAY_WEEK <- factor(drunk_by_day$DAY_WEEK)
+levels(drunk_by_day$DAY_WEEK) <- c("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")
+drunk_by_day$DAY_WEEK <- factor(drunk_by_day$DAY_WEEK, levels=c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"))
+
+qplot(data=drunk_by_day, geom="bar", x=HOUR, weight=deaths, colour=I("blue"), main = "An Overview of When Fatal Accidents Happen On the Road") + facet_wrap(~DAY_WEEK, ncol=4)
+```
+
+The variable DRUNK_DR is the number of drivers involved in the crash who tested as being above the legal limit of alcohol, i.e. were legally drunk. Days of the week are encoded as 1 for Sunday through 7 for Saturday, the dots in Figure show the percentage of accidents in which at least one of the drivers was drunk. On Saturdays and Sundays the percentage of drunk drivers is generally higher, but on all days of the week, fatal accidents that occur after 8 pm and before 5 am have an over 30% chance of involving a drunk driver. During the very early hours of the morning this rate spikes to well over 50% even on weekdays!
+
+```{r}
+qplot(HOUR, drunkPerc, data=drunk_by_day, colour=DAY_WEEK, geom="point", group=DAY_WEEK, main = "Percentage of Accidents in Which at Least One of the Drivers was Drunk") + theme_bw() + geom_smooth(se=FALSE) 
+```
+
+# What contributes to fatal accidents?
+
+CF is a variable encoding contributing factors. For more than 90% of all accidents no contributing factors are recorded, but for the remainder, the most frequent factors are (14) falling cargo followed by (20) police pursuit (see Figure @ref(fig:what) ).
+
+```{r}
+getLevels <- function(varname, file) {
+  formats <- readLines(con=file)
+  found <- grep(varname, formats)
+  if (length(found) == 0) {
+    stop(sprintf("Error: no level information found for variable %s\n", varname))
+  }
+  # semicolons indicate end of lines
+  semicolons <- grep(";", formats)
+  
+  #read lines from found to next semicolon
+  endOfRead <- semicolons[which(semicolons - found > 0)[1]]
+  dframe <- read.table(file, header=FALSE, sep= "=", skip = found, nrows=endOfRead-found-1)
+  dframe
+}
+
+
+ARF14F <- list(CF1 = c(0, 1, 2, 3, 4, 5, 6, 7, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 99), Label = c("None", "Inadequate Warning of Exits, Lanes Narrowing, Traffic Controls etc.", "Shoulder Related", "Other Maintenance", "No or Obscured Pavement Marking", "Surface Under Water","Inadequate Construction or Poor Design of Roadway, Bridge", "Surface Washed Out", "Aggressive Driving/Road Rage", "Motor Vehicle Struck By Falling Cargo", "Non-Occupant Struck By Falling Cargo", "Vehicle Set In Motion By Non-Driver", "Date of Crash and Date of EMS Notification Were Not Same Day", "Recent Previous Crash Scene Nearby", "Police-Pursuit-Involved", "Within Designated School Zone", "Speed Limit Is a Statutory Limit as Recorded", "Indication of a Stalled/Disabled Vehicle", "Unstabilized Situation Began and All Harmful Events Occurred Off of the Roadway", "Toll Plaza Related", "Toll Booth/Plaza Related", "Backup Due to Prior Non-Recurring Incident", "Backup Due to Prior Crash", "Backup Due to Regular Congestion", "Unknown"))
+enc <- ARF14F
+names(enc) <- c("CF1", "Label")
+```
+
+
+```{r}
+qplot(reorder(CF1, CF1, length), data=accident2016, geom="bar") + coord_flip() + 
+  geom_text(aes(label=Label), y=1000, data=enc, hjust=0)
+
+```
+
+
+
+# Who is involved in fatal accidents?
+
+Assuming, individuals on the front left seat are drivers, we see in Figure @ref(fig:drivers) that on weekdays there is not a big difference in the drunk driving pattern between male and female drivers, but starting Friday afternoon and early evening a gap opens up: a higher percentage of men involved in a fata accident are driving drunk than women in the evenings and early morning hours until during Monday mornings the gap closes again.
+
+```{r}
+#person2016 
+driver <- subset(person2016, SEAT_POS == 11) # front left seat
+driver$Date <- with(driver, as.Date(sprintf("2014/%s/%s", MONTH, DAY)))
+driver$DAY_WEEK <- lubridate::wday(driver$Date, label=TRUE)
+drunk <- driver %>% group_by(HOUR, SEX, DAY_WEEK) %>%
+  summarize(
+    n = n(),
+    drunk = sum(DRINKING==1)
+  )
+drunk$HOUR[drunk$HOUR==99] <- NA
+drunk$drunkPerc <- with(drunk, drunk/n*100)
+drunk$SEX[drunk$SEX > 2] <- NA
+drunk$SEX <- factor(drunk$SEX)
+levels(drunk$SEX) <- c("Male", "Female")
+
+qplot(HOUR, drunkPerc, data=na.omit(drunk), colour=factor(SEX),  geom="point", group=interaction(SEX, DAY_WEEK), main = "Drunk Driving pattern between Male and Female Drivers") + theme_bw() + geom_smooth(se=FALSE) + facet_wrap(~DAY_WEEK)
+```
+
+
+Do we see this gap between genders because women are more sensible with alcohol or do they just let somebody else drive? Below figure gives a comparison of the number of men and women involved in fatal accidents. Overall, there are about twice as many men involved in a fatal accident than there are women. On the driver seat, this difference is even more pronounced: if there is only one person in the car, the odds of that person being a man are about 3:1. When there are two people in the car, the ratio changes again. On the driver seat the odds of male:female change to about 2:1, while on the passenger seat more women are found than man.
+
+
+
+```{r}
+#library(sas7bdat)
+frontseats <- subset(person2016, SEAT_POS %in% c(11, 13))
+frontseats$SEX[frontseats$SEX > 2] <- NA
+frontseats$SEX <- factor(frontseats$SEX)
+levels(frontseats$SEX) <- c("Male", "Female")
+#enc4 <- getLevels("DRINK14F", "data/FARS2014-DBF/Format14.sas")
+#names(enc4) <- c("DRINKING", "DRINKINGR")
+
+DRINK14F <- list(DRINKING = c("No(Alcohol Not Involved)", "Yes(Alcohol Involved)", "Not Reported", "Unknown(Police Reported)"), DRINKINGR = c("No(Alcohol Not Involved)", "Yes(Alcohol Involved)", "Not Reported", "Unknown(Police Reported)"))
+#DRINK14F <- list(levels = c("DRINKING", "DRINKINGR"), labels = c("No(Alcohol Not Involved)", "Yes(Alcohol Involved)", "Not Reported", "Unknown(Police Reported)"))
+#DRINKING = c("No(Alcohol Not Involved)", "Yes(Alcohol Involved)", "Not Reported", "Unknown(Police Reported)")
+#DRINKINGR = c("No(Alcohol Not Involved)", "Yes(Alcohol Involved)", "Not Reported", "Unknown(Police Reported)")
+enc4 <- DRINK14F
+names(enc4) <- c("DRINKING", "DRINKINGR")
+
+
+frontseats <- frontseats %>% group_by(ST_CASE, VEH_NO) %>% mutate(PERSON=n())
+frontseats <- subset(frontseats, PERSON < 3)
+frontseats <- subset(frontseats, SEX %in% c("Male", "Female"))
+frontseats <- subset(frontseats, (SEAT_POS == 11) | (PERSON == 2 & SEAT_POS ==13) )
+frontseats$SEAT_POS <- factor(frontseats$SEAT_POS)
+levels(frontseats$SEAT_POS) <- c("Driver", "Passenger")
+
+frontseats$DRINKING <- factor(frontseats$DRINKING)
+levels(frontseats$DRINKING) <- as.vector(enc4$DRINKINGR)
+
+ggplot(data=frontseats) +
+  geom_bar(aes(x = DRINKING, fill= SEX), position="dodge") + 
+  facet_grid(PERSON~SEAT_POS, labeller="label_both") +
+  theme(axis.text.x=element_text(angle=90, hjust=1, vjust=0.5))
+```
+
+Figure @ref(fig:seats-perc) shows the percentages of men involved in fatal accidents by position in the car and number of persons. In all three situations, the odds of men versus women change towards a higher percentage of men if alcohol is involved.
+
+```{r}
+ggplot(data=frontseats) +
+  geom_bar(aes(x = DRINKING, fill= SEX), position="fill") + 
+  facet_grid(PERSON~SEAT_POS, labeller="label_both") +
+  theme(axis.text.x=element_text(angle=90, hjust=1, vjust=0.5))
+```
+
+When we further investigate the demographics of persons involved in fatal accidents, we find some more imbalances between the genders. Figure @ref(fig:age) shows the marginal distributions of people involved by age. Once somebody can get a licens (at around age 18), there are huge spikes in the numbers for both genders. A secondary spike at around age 50 is much more pronounced in men than women.
+
+
+```{r}
+person2016$Alive <- person2016$DEATH_YR > 2015
+person2016$SEX[person2016$SEX > 2] <- NA
+person2016$AGE[person2016$AGE > 199] <- NA
+
+
+person2016$GenderAlive <- with(person2016, interaction(SEX,Alive))
+levels(person2016$GenderAlive) <- c("Male/died", "Female/died", "Male/alive", "Female/alive")
+
+person2016$SEX <- factor(person2016$SEX)
+levels(person2016$SEX) <- c("Male", "Female")
+
+cols <- RColorBrewer::brewer.pal(n=6, name="Paired")
+ggplot(aes(AGE, fill=GenderAlive), data=subset(person2016, !is.na(GenderAlive))) + 
+  geom_histogram( binwidth=1) + 
+  scale_fill_manual(values=cols[c(2,6,1,5)]) + 
+  theme(legend.position="none") + 
+  geom_hline(yintercept=0.5, colour="white") + facet_wrap(~SEX)
+```
+
+
+Figure @ref(fig:age-b) shows essentially the same picture, but focuses on outcome of the accident. Light colors indicate survival. Death rates vary a lot by age, and there are some interesting differences between genders: for the first 17 years, death rates for both genders are low and very similar (and probably related to position in the car). Rates then jump to much higher rates: for men aged between 20 and 60 the chance of dying in the car accident when involved in a fatal car crash is almost 50%. For women this probability is about 40%. After age 60 the rates go up steeply. Rates for men stay above the rates for women up to about age 80, when the gender differences disappear again (but there is also not much data to support this statement).
+
+```{r}
+ggplot(aes(AGE, fill=GenderAlive), data=subset(person2016, !is.na(GenderAlive))) + 
+  geom_histogram( binwidth=1, position="fill", alpha=0.8) +
+  scale_fill_manual(values=cols[c(2,6,1,5)]) + ylab("proportion") + 
+  theme(legend.position="none") + facet_wrap(~SEX) 
+```
+
+Figure @ref(fig:age-c) puts all of these percentages together. The figure gives an overview of the multinomial distributions conditioned on age. Between ages 20 and 50 men are by far overrepresented in fatal accidents.
+
+```{r}
+person2016$GenderAlive <- factor(person2016$GenderAlive, levels=c("Male/died",  "Male/alive", "Female/alive", "Female/died"))
+
+ggplot(aes(AGE, fill=GenderAlive), data=person2016) + 
+  geom_histogram(position="fill", binwidth=1, alpha=0.8) + 
+  scale_fill_manual(values=cols[c(2,1,5,6)]) + 
+  theme(legend.position="none") + ylab("proportion") + 
+  geom_hline(yintercept=0.5, colour="white")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
